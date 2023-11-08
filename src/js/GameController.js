@@ -114,15 +114,201 @@ export default class GameController {
     return arr;
   }
 
-  onCellClick(index) {
+  displayCharacter() {
+    let userTeam = [];
+    let compTeam = [];
+    const compPositionArr = this.createPosition(this.gamePlay.boardSize, [6, 7]);
+    const userPositionArr = this.createPosition(this.gamePlay.boardSize, [0, 1]);
+    switch (this.gameState.level) {
+      case 1:
+        userTeam = generateTeam([Bowman, Swordsman], 1, 2);
+        compTeam = generateTeam([Vampire, Undead, Daemon], 1, 2);
+        break;
+      case 2:
+        userTeam = generateTeam([Bowman, Swordsman, Magician], 1, 1);
+        compTeam = generateTeam([Vampire, Undead, Daemon], 2,
+          (userTeam.length + this.UserTeam.team.length));
+        break;
+      case 3:
+        userTeam = generateTeam([Bowman, Swordsman, Magician], 2, 2);
+        compTeam = generateTeam([Vampire, Undead, Daemon], 3,
+          (userTeam.length + this.UserTeam.team.length));
+        break;
+      case 4:
+        userTeam = generateTeam([Bowman, Swordsman, Magician], 3, 2);
+        compTeam = generateTeam([Vampire, Undead, Daemon], 4,
+          (userTeam.length + this.UserTeam.team.length));
+        break;
+      default:
+        compTeam = generateTeam([Vampire, Undead, Daemon], 4, this.UserTeam.team.length);
+    }
+
+    // создаем новый массив userTeamPosition, в котором каждому персонажу из массива userTeam присваиваем случайную позицию из массива userPositionArr 
+    // с помощью метода map. Для каждого персонажа создаем новый объект PositionedCharacter, который содержит информацию о персонаже и его позиции на 
+    // игровом поле.
+
+    const userTeamPosition = userTeam.map((elem) => {
+      const userPosition = userPositionArr[Math.floor(Math.random() * userPositionArr.length)];
+      return new PositionedCharacter(elem, userPosition);
+    });
+
+    const compTeamPosition = compTeam.map((elem) => {
+      const userPosition = compPositionArr[Math.floor(Math.random() * compPositionArr.length)];
+      return new PositionedCharacter(elem, userPosition);
+    });
+
+    this.gameState.UserTeam.addCharacters(userTeamPosition); // добавляем персонажей в команду пользователя
+    this.gameState.CompTeam.addCharacters(compTeamPosition); // добавляем персонажей в команду компьютера
+    this.gameState.reset(); // сбрасываем состояние игры
+    this.gamePlay.drawUi(themes.item(this.gameState.level)); // отрисовываем поле игры
+    this.gamePlay.redrawPositions([...this.gameState.arrTeam()]); // перерисовываем позиции персонажей
+  }
+
+  async onCellClick(index) {
     // TODO: react to click
+
+    if (!this.gameState.block) {
+      const indexInArr = this.gameState.arrUserPosition().indexOf(index);
+      const indexInCompArr = this.gameState.arrCompPosition().indexOf(index);
+
+      if (indexInArr !== -1) {
+        if (index === this.gameState.currentIndex) {
+          this.gamePlay.deselectCell(this.gameState.currentIndex); // удаляем старого персонажа
+          this.gameState.reset();
+          return;
+        }
+        if (this.gameState.currentIndex !== null) { // удалить старого и выбрать нового персонажа
+          this.gamePlay.deselectCell(this.gameState.currentIndex);
+          this.gameState.reset();
+        }
+
+        const item = [...this.gameState.UserTeam.team][indexInArr]; // выбрать персонажа и добавить желтый круг
+        this.gamePlay.selectCell(index);
+        this.gameState.currentIndex = index;
+        this.gameState.currentCharacter = item;
+        this.gameState.currentAttack = item.character.rangeAttack;
+        this.gameState.currentMove = item.character.rangeMove;
+      } else if (this.gameState.currentRangeMove().has(index)
+        && indexInCompArr === -1) { // перемещаем персонажа пользователя
+        this.gamePlay.deselectCell(this.gameState.currentIndex);
+        this.gamePlay.deselectCell(index);
+        this.gameState.currentCharacter.position = index;
+        this.gameState.reset();
+        this.gameState.isMove = 'comp';
+        this.gamePlay.redrawPositions(this.gameState.arrTeam());
+
+        compAction(this.gameState); // response action computer
+      } else if (this.gameState.currentIndex !== null && indexInCompArr !== -1 // attack on computer
+        && this.gameState.currentRange().has(index)) {
+        const indexComp = this.gameState.arrCompPosition().indexOf(index);
+        const compCharacter = this.CompTeam.team[indexComp];
+        const response = await attack(this.gameState.currentCharacter, compCharacter, this.gameState);
+        if (response === 'next') {
+          this.gameState.level += 1;
+          for (const item of this.UserTeam.team) {
+            this.gameState.point += item.character.health;
+          }
+          if (this.gameState.level <= 4) {
+            this.levelUp();
+          }
+
+          this.displayCharacter();
+          this.gamePlay.showPoints(this.gameState.point);
+          return;
+        }
+        const action = await compAction(this.gameState); // response action computer
+        if (action === 'dead') { // dead user character
+          this.gamePlay.deselectCell(this.gameState.currentIndex);
+          this.gamePlay.deselectCell(index);
+          this.gamePlay.setCursor(cursors.auto);
+          this.gameState.reset();
+        }
+      } else if (indexInCompArr !== -1 && !this.gameState.currentRange().has(index)
+        && this.gameState.currentIndex !== null) { // show error
+        this.gamePlay.setCursor(cursors.notallowed);
+        GamePlay.showError('This isn`t allowed action');
+      } else if (indexInCompArr !== -1) { // show error
+        GamePlay.showError('This isn`t your character');
+      }
+    }
   }
 
   onCellEnter(index) {
     // TODO: react to mouse enter
+
+    if (!this.gameState.block) {
+      const indexInArr = this.gameState.arrPositions().indexOf(index);
+      const indexInCompArr = this.gameState.arrCompPosition().indexOf(index);
+      const indexInUserArr = this.gameState.arrUserPosition().indexOf(index);
+
+      if (indexInArr !== -1) {
+        const item = this.gameState.arrTeam()[indexInArr];
+        const message = `🎖${item.character.level}⚔${item.character.attack}🛡${item.character.defence}❤${item.character.health}`;
+        this.gamePlay.showCellTooltip(message, index);
+      }
+
+      if (indexInUserArr !== -1) {
+        this.gamePlay.setCursor(cursors.pointer);
+      }
+
+      if (this.gameState.currentIndex !== null) { // показать место, которое персонаж может атаковать
+        if (this.gameState.currentRange().has(index) && indexInArr === -1) {
+          this.gamePlay.selectCell(index, 'green');
+        }
+
+        // показать место, куда персонаж может двигаться
+        if (this.gameState.currentRangeMove().has(index) && this.gameState.arrPositions().indexOf(index) === -1) {
+          this.gamePlay.setCursor(cursors.pointer);
+        }
+      }
+
+      // добавить красный кружок и перекрестие курсора на врага, если он находится в текущем диапазоне пользовательского персонажа, или добавить перекрестие запрещено
+      // если он не в текущем диапазоне.
+      if (this.gameState.currentIndex !== null && !this.gameState.currentRange().has(index) && indexInCompArr !== -1) {
+        this.gamePlay.setCursor(cursors.notallowed);
+      } else if (this.gameState.currentIndex !== null && indexInCompArr !== -1) {
+        this.gamePlay.selectCell(index, 'red');
+        this.gamePlay.setCursor(cursors.crosshair);
+      }
+    }
   }
 
   onCellLeave(index) {
     // TODO: react to mouse leave
+
+    if (!this.gameState.block) {
+      const indexInArr = this.gameState.arrPositions().indexOf(index);
+      const indexInCompArr = this.gameState.arrCompPosition().indexOf(index);
+      const indexInUserArr = this.gameState.arrUserPosition().indexOf(index);
+
+      if ((this.gameState.currentRange().has(index) && indexInArr === -1)
+        || (this.gameState.currentRange().has(index) && indexInCompArr !== -1)) {
+        this.gamePlay.setCursor(cursors.auto);
+        this.gamePlay.deselectCell(index);
+      }
+
+      if ((this.gameState.currentRangeMove() !== null && this.gameState.currentRangeMove().has(index)
+        && indexInArr === -1) || indexInUserArr !== -1) {
+        this.gamePlay.setCursor(cursors.auto);
+      }
+
+      if (this.gameState.currentIndex !== null) {
+        this.gamePlay.setCursor(cursors.auto);
+      }
+    }
+  }
+
+  levelUp() {
+    for (const item of this.UserTeam.team) {
+      const current = item.character;
+      current.level += 1;
+      current.attack = this.upAttackDefence(current.attack, current.health);
+      current.defence = this.upAttackDefence(current.defence, current.health);
+      current.health = (current.health + 80) < 100 ? current.health + 80 : 100;
+    }
+  }
+
+  upAttackDefence(attackBefore, life) {
+    return Math.floor(Math.max(attackBefore, attackBefore * (1.6 - life / 100)));
   }
 }
