@@ -228,4 +228,16 @@ export default class GamePlay {
       throw new Error('GamePlay not bind to DOM');
     }
   }
+
+  showPoints(amount) {
+    const points = document.getElementsByClassName('point');
+    if (points.length === 0) {
+      const point = document.createElement('div');
+      const controls = document.getElementById('contr');
+      point.classList.add('point');
+      point.textContent = `Points: ${amount}`;
+      controls.appendChild(point);
+    }
+    points[0].textContent = `Points: ${amount}`;
+  }
 }
