@@ -1,314 +1,288 @@
-import themes from './themes';
-import PositionedCharacter from './PositionedCharacter';
-import {generateTeam} from './generators';
-import {
-  Bowman, Daemon, Magician, Swordsman, Undead, Vampire,
-} from './Character';
-import Team from './Team';
 import GamePlay from './GamePlay';
+import GameStateService from './GameStateService';
+import {
+	attackRadius, generatePositionedAllies, generatePositionedEnemies, movementRadius
+} from './generators';
+import PositionedCharacter from './PositionedCharacter';
 import cursors from './cursors';
+import { EnemiesVSAlly } from './type/EnemiesVSAlly';
+import { dealDamage, randomElementFromArray } from './utils';
+import Character from './Character';
+import ThemesIterator from './themes/ThemesIterator';
 import GameState from './GameState';
-import {compAction} from './compAction';
-import attack from './Attack';
+import Team from './Team';
 
 export default class GameController {
-  constructor(gamePlay, stateService) { //конструктор класса принимает два параметра: gamePlay и stateService. Затем создаю объекты для игровых 
-    //команд пользователя и компьютера, а также объект для состояния игры. Далее определяем обработчики событий для клика, наведения и ухода курсора с клетки 
-    //игрового поля, а также функции для начала новой игры, сохранения и загрузки игры. Все функции привязываю к текущему контексту с помощью метода bind().
-    this.gamePlay = gamePlay;
-    this.stateService = stateService;
-    this.UserTeam = new Team([]);
-    this.CompTeam = new Team([]);
-    this.gameState = new GameState(this.gamePlay, this.UserTeam, this.CompTeam);
+	private readonly gamePlay: GamePlay;
 
-    this.onCellClick = this.onCellClick.bind(this);
-    this.onCellEnter = this.onCellEnter.bind(this);
-    this.onCellLeave = this.onCellLeave.bind(this);
-    this.newGame = this.newGame.bind(this);
-    this.saveGame = this.saveGame.bind(this);
-    this.loadGame = this.loadGame.bind(this);
-  }
+	private stateService: GameStateService;
 
-  events() { // определяем метод events() для класса, который добавляет обработчики событий для различных действий пользователя в игре (наведение, клик, 
-    // начало новой игры, сохранение и загрузка игры). Метод использует методы объекта gamePlay для добавления обработчиков событий.
-    this.gamePlay.addCellEnterListener(this.onCellEnter);
-    this.gamePlay.addCellLeaveListener(this.onCellLeave);
-    this.gamePlay.addCellClickListener(this.onCellClick);
-    this.gamePlay.addNewGameListener(this.newGame);
-    this.gamePlay.addSaveGameListener(this.saveGame);
-    this.gamePlay.addLoadGameListener(this.loadGame);
-  }
+	private positionedCharacters: PositionedCharacter[] = [];
 
-  init() { // отображение игровой сцены и взаимодействия с пользователем
-    // TODO: add event listeners to gamePlay events
-    // TODO: load saved stated from stateService
+	private themes: ThemesIterator = new ThemesIterator('prairie');
 
-    this.events();
-    this.gamePlay.drawUi(themes.item(this.gameState.level)); // отображаем интерфейс игры, включая элементы управления и информацию о текущем состоянии игры
-    this.displayCharacter(); // отображаем персонажа на экране
-  }
+	private userTeam?: Team;
 
-  saveGame() { // сохраним текущее состояние игры с помощью сервиса состояния игры.
-    this.stateService.save(this.gameState);
-  }
+	private positionedAllies: PositionedCharacter[] = [];
 
-  loadGame() { // загружаем сохраненное состояние игры с помощью сервиса состояния игры и обновляем текущее состояние игры на основе загруженных данных. 
-    // Если сохраненное состояние игры отсутствует, выводим сообщение об ошибке и запускаем новую игру
-    try {
-      const loadGameState = this.stateService.load();
-      if (loadGameState) {
-        this.UserTeam.deleteCharacter();
-        this.CompTeam.deleteCharacter();
-        this.UserTeam.addCharacters(loadGameState.UserTeam.team);
-        this.CompTeam.addCharacters(loadGameState.CompTeam.team);
+	private positionedEnemies: PositionedCharacter[] = [];
 
-        this.gameState.isMove = 'user';
-        this.gameState.block = loadGameState.block;
-        this.gameState.level = loadGameState.level;
-        this.gameState.point = loadGameState.point;
-        this.gameState.history = loadGameState.history;
-        this.gameState.UserTeam = this.UserTeam;
-        this.gameState.CompTeam = this.CompTeam;
-        this.gameState.currentIndex = null;
-        this.gameState.currentMove = null;
-        this.gameState.currentAttack = null;
-        this.gameState.currentCharacter = null;
-        this.gamePlay.drawUi(themes.item(this.gameState.level));
-        this.gamePlay.redrawPositions([...this.gameState.arrTeam()]);
-        this.gamePlay.showPoints(this.gameState.point);
-      } else {
-        throw new Error('There`s no game in memory');
-      }
-    } catch (err) {
-      console.error(err);
-      GamePlay.showMessage('There`s no game in memory');
-      this.newGame();
-    }
-  }
+	constructor(gamePlay: GamePlay, stateService: GameStateService) {
+		this.gamePlay = gamePlay;
+		this.stateService = stateService;
+	}
 
-  newGame() { // сбрасываем все предыдущие данные, устанавливаем начальный уровень и количество очков, очищая команды игроков и компьютера, 
-    // обновляя интерфейс и отображая персонажей.
-    this.gameState.block = false;
-    this.gameState.history.push({
-      level: this.gameState.level,
-      points: this.gameState.point,
-    });
-    this.gameState.level = 1;
-    this.gameState.point = 0;
-    this.UserTeam.deleteCharacter();
-    this.CompTeam.deleteCharacter();
-    this.gameState.reset();
-    this.gamePlay.drawUi(themes.item(this.gameState.level));
-    this.displayCharacter();
-  }
+	init() {
+		this.gamePlay.drawUi(this.themes.currentTheme); // при помощи метода drawUi() вызываем создание игрового пользовательского интерфейса с использованием текущей темы
+		const { boardSize } = this.gamePlay;
 
-  createPosition(boardSize, range) { // создаем массив позиций arr на игровом поле для игры. Размер поля задается параметром boardSize, 
-    // а диапазон позиций - параметром range. С помощью forEach проходим по каждому элементу диапазона и добавляем в массив arr все позиции на игровом поле, 
-    // начиная с этого элемента и с шагом boardSize. В конце возвращаем полученный массив arr.
-    const arr = [];
-    range.forEach((elem) => {
-      for (let i = elem; i < boardSize ** 2; i += boardSize) {
-        arr.push(i);
-      }
-    });
-    return arr;
-  }
+		this.positionedAllies = generatePositionedAllies(boardSize); // генерируем позиций союзников на игровом поле.
 
-  displayCharacter() {
-    let userTeam = [];
-    let compTeam = [];
-    const compPositionArr = this.createPosition(this.gamePlay.boardSize, [6, 7]);
-    const userPositionArr = this.createPosition(this.gamePlay.boardSize, [0, 1]);
-    switch (this.gameState.level) {
-      case 1:
-        userTeam = generateTeam([Bowman, Swordsman], 1, 2);
-        compTeam = generateTeam([Vampire, Undead, Daemon], 1, 2);
-        break;
-      case 2:
-        userTeam = generateTeam([Bowman, Swordsman, Magician], 1, 1);
-        compTeam = generateTeam([Vampire, Undead, Daemon], 2,
-          (userTeam.length + this.UserTeam.team.length));
-        break;
-      case 3:
-        userTeam = generateTeam([Bowman, Swordsman, Magician], 2, 2);
-        compTeam = generateTeam([Vampire, Undead, Daemon], 3,
-          (userTeam.length + this.UserTeam.team.length));
-        break;
-      case 4:
-        userTeam = generateTeam([Bowman, Swordsman, Magician], 3, 2);
-        compTeam = generateTeam([Vampire, Undead, Daemon], 4,
-          (userTeam.length + this.UserTeam.team.length));
-        break;
-      default:
-        compTeam = generateTeam([Vampire, Undead, Daemon], 4, this.UserTeam.team.length);
-    }
+		this.positionedEnemies = generatePositionedEnemies(boardSize); // генерации позиций врагов на игровом поле.
 
-    // создаем новый массив userTeamPosition, в котором каждому персонажу из массива userTeam присваиваем случайную позицию из массива userPositionArr 
-    // с помощью метода map. Для каждого персонажа создаем новый объект PositionedCharacter, который содержит информацию о персонаже и его позиции на 
-    // игровом поле.
+		this.positionedCharacters = this.positionedAllies.map((item) => item); // Создаем массив positionedCharacters путем объединения массивов positionedAllies и positionedEnemies.
+		this.positionedEnemies.forEach((item) => {
+			this.positionedCharacters.push(item);
+		});
 
-    const userTeamPosition = userTeam.map((elem) => {
-      const userPosition = userPositionArr[Math.floor(Math.random() * userPositionArr.length)];
-      return new PositionedCharacter(elem, userPosition);
-    });
+		// eslint-disable-next-line max-len
+		this.userTeam = new Team(this.positionedAllies.map((positionedAlly) => positionedAlly.character)); // Создаем новый объект команды для команды пользователя, используя массив positionedAllies.
 
-    const compTeamPosition = compTeam.map((elem) => {
-      const userPosition = compPositionArr[Math.floor(Math.random() * compPositionArr.length)];
-      return new PositionedCharacter(elem, userPosition);
-    });
+		this.gamePlay.redrawPositions(this.positionedCharacters); // Вызываем метод redrawPositions() для обновления игрового поля с позиционированными персонажами.
 
-    this.gameState.UserTeam.addCharacters(userTeamPosition); // добавляем персонажей в команду пользователя
-    this.gameState.CompTeam.addCharacters(compTeamPosition); // добавляем персонажей в команду компьютера
-    this.gameState.reset(); // сбрасываем состояние игры
-    this.gamePlay.drawUi(themes.item(this.gameState.level)); // отрисовываем поле игры
-    this.gamePlay.redrawPositions([...this.gameState.arrTeam()]); // перерисовываем позиции персонажей
-  }
+    // Добавляем события для клика, наведения и ухода с ячейки с помощью методов addCellClickListener(), addCellEnterListener() и addCellLeaveListener().
+		this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
+		this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
+		this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
 
-  async onCellClick(index) {
-    // TODO: react to click
+    // Добавляется новое событие для перезапуска игры путем вызова метода init() снова.
+		this.gamePlay.addNewGameListener(() => this.init());
+		this.gamePlay.addSaveGameListener(() => { // Добавляем событие сохранения игры для сохранения состояния игры с использованием метода stateService.save().
+			const state = {
+				userTeam: this.positionedAllies,
+				enemyTeam: this.positionedEnemies,
+				theme: this.themes.currentTheme
+			};
+			this.stateService.save(state);
+		});
 
-    if (!this.gameState.block) {
-      const indexInArr = this.gameState.arrUserPosition().indexOf(index);
-      const indexInCompArr = this.gameState.arrCompPosition().indexOf(index);
+    // Добавляем событие загрузки игры для загрузки состояния игры с использованием метода stateService.load() и обновления игры с загруженным состоянием.
+		this.gamePlay.addLoadGameListener(() => {
+			const state = this.stateService.load();
+			if (state) {
+				const loadGame = GameState.from(state);
+				this.themes = new ThemesIterator(loadGame.theme);
+				this.gamePlay.drawUi(this.themes.currentTheme);
+				this.positionedAllies = state.allyTeam;
+				this.positionedEnemies = state.enemyTeam;
+				this.positionedCharacters = loadGame.characters;
+				this.userTeam = new Team(loadGame.userTeam);
+				this.gamePlay.redrawPositions(this.positionedCharacters);
+			}
+		});
+	}
 
-      if (indexInArr !== -1) {
-        if (index === this.gameState.currentIndex) {
-          this.gamePlay.deselectCell(this.gameState.currentIndex); // удаляем старого персонажа
-          this.gameState.reset();
-          return;
-        }
-        if (this.gameState.currentIndex !== null) { // удалить старого и выбрать нового персонажа
-          this.gamePlay.deselectCell(this.gameState.currentIndex);
-          this.gameState.reset();
-        }
+	onCellClick(index: number) {
 
-        const item = [...this.gameState.UserTeam.team][indexInArr]; // выбрать персонажа и добавить желтый круг
-        this.gamePlay.selectCell(index);
-        this.gameState.currentIndex = index;
-        this.gameState.currentCharacter = item;
-        this.gameState.currentAttack = item.character.rangeAttack;
-        this.gameState.currentMove = item.character.rangeMove;
-      } else if (this.gameState.currentRangeMove().has(index)
-        && indexInCompArr === -1) { // перемещаем персонажа пользователя
-        this.gamePlay.deselectCell(this.gameState.currentIndex);
-        this.gamePlay.deselectCell(index);
-        this.gameState.currentCharacter.position = index;
-        this.gameState.reset();
-        this.gameState.isMove = 'comp';
-        this.gamePlay.redrawPositions(this.gameState.arrTeam());
+    // Сначала ищем персонажа в выбранной ячейке с помощью метода find() и сохраняем его в переменную positionedCharacter.
+		const positionedCharacter = this.positionedCharacters.find(
+			(character) => character.position === index
+		);
 
-        compAction(this.gameState); // response action computer
-      } else if (this.gameState.currentIndex !== null && indexInCompArr !== -1 // attack on computer
-        && this.gameState.currentRange().has(index)) {
-        const indexComp = this.gameState.arrCompPosition().indexOf(index);
-        const compCharacter = this.CompTeam.team[indexComp];
-        const response = await attack(this.gameState.currentCharacter, compCharacter, this.gameState);
-        if (response === 'next') {
-          this.gameState.level += 1;
-          for (const item of this.UserTeam.team) {
-            this.gameState.point += item.character.health;
-          }
-          if (this.gameState.level <= 4) {
-            this.levelUp();
-          }
+    // Проверяем наличие текущего выбранного персонажа и возможность перемещения на выбранную ячейку в пределах радиуса перемещения. 
+    // Если условия выполняются, делаем перемещение персонажа, обновление игрового поля и вызов метода attackEnemy() для атаки врага
+		if (this.gamePlay.currentCharacter && !positionedCharacter && movementRadius(
+			this.gamePlay.currentCharacter?.position,
+			this.gamePlay.currentCharacter?.character.movementRange,
+			this.gamePlay.boardSize
+		).includes(index)) {
+			this.gamePlay.deselectCell(index);
+			this.gamePlay.deselectCell(this.gamePlay.currentCharacter.position);
+			this.gamePlay.currentCharacter.position = index;
+			this.gamePlay.redrawPositions(this.positionedCharacters);
+			this.gamePlay.currentCharacter = undefined;
+			this.gamePlay.setCursor(cursors.auto);
+			this.attackEnemy();
+		}
 
-          this.displayCharacter();
-          this.gamePlay.showPoints(this.gameState.point);
-          return;
-        }
-        const action = await compAction(this.gameState); // response action computer
-        if (action === 'dead') { // dead user character
-          this.gamePlay.deselectCell(this.gameState.currentIndex);
-          this.gamePlay.deselectCell(index);
-          this.gamePlay.setCursor(cursors.auto);
-          this.gameState.reset();
-        }
-      } else if (indexInCompArr !== -1 && !this.gameState.currentRange().has(index)
-        && this.gameState.currentIndex !== null) { // show error
-        this.gamePlay.setCursor(cursors.notallowed);
-        GamePlay.showError('This isn`t allowed action');
-      } else if (indexInCompArr !== -1) { // show error
-        GamePlay.showError('This isn`t your character');
-      }
-    }
-  }
+		if (!positionedCharacter) { // Если в выбранной ячейке нет персонажа, выполнение метода завершается.
+			return;
+		}
 
-  onCellEnter(index) {
-    // TODO: react to mouse enter
+    // Если в выбранной ячейке находится персонаж из команды пользователя, этот персонаж становится текущим выбранным персонажем, а ячейка выделяется.
+		if (this.userTeam?.has(positionedCharacter.character)) {
+			if (this.gamePlay.currentCharacter?.position) {
+				this.gamePlay.deselectCell(this.gamePlay.currentCharacter.position);
+			}
+			this.gamePlay.currentCharacter = positionedCharacter;
+			this.gamePlay.selectCell(index);
+		} else if (this.gamePlay.currentCharacter) {  //Если текущий выбранный персонаж совершает атаку на врага, происходит расчет урона, уменьшение здоровья врага, 
+      // отображение урона на игровом поле, обновление состояния игры и проверка на возможность перехода к следующему уровню.
+			if (attackRadius(
+				this.gamePlay.currentCharacter?.position,
+				this.gamePlay.currentCharacter?.character.attackRange,
+				this.gamePlay.boardSize
+			).includes(index)
+				&& !this.userTeam?.has(positionedCharacter.character)
+			) {
+				this.gamePlay.deselectCell(this.gamePlay.currentCharacter.position);
+				const damage = dealDamage(
+					this.gamePlay.currentCharacter.character,
+					positionedCharacter.character
+				);
+				positionedCharacter.character.health -= damage;
+				this.gamePlay.showDamage(index, `${damage}`).then(() => {
+					this.deathCharacter(positionedCharacter.character);
+					this.gamePlay.redrawPositions(this.positionedCharacters);
+					const enemies = this.enemies();
+					this.gamePlay.currentCharacter = undefined;
+					this.gamePlay.setCursor(cursors.auto);
+					if (enemies && enemies.length) {
+						this.attackEnemy();
+					} else {
+						const allies = this.allies();
+						allies?.forEach((ally) => {
+							ally.character.levelUP();
+						});
+						const { boardSize } = this.gamePlay;
+						const positionedEnemies = generatePositionedEnemies(boardSize);
+						this.positionedCharacters = this.positionedCharacters.concat(positionedEnemies);
+						const nextTheme = this.themes.next();
+						if (nextTheme !== 'prairie') {
+							this.gamePlay.drawUi(nextTheme);
+							this.gamePlay.redrawPositions(this.positionedCharacters);
+						} else {
+							this.gamePlay.clearEvents();
+						}
+					}
+				});
+			} else {
+				GamePlay.showError('Недопустимое действие'); // Если текущий выбранный персонаж не может совершить атаку на выбранную ячейку, выводится сообщение об ошибке.
+			}
+		} else {
+			GamePlay.showError('Выберите своего персонажа'); // Если не выбран текущий персонаж, выводится сообщение о необходимости выбора своего персонажа.
+		}
+	}
 
-    if (!this.gameState.block) {
-      const indexInArr = this.gameState.arrPositions().indexOf(index);
-      const indexInCompArr = this.gameState.arrCompPosition().indexOf(index);
-      const indexInUserArr = this.gameState.arrUserPosition().indexOf(index);
+	onCellEnter(index: number) {
+		const character = this.positionedCharacters.find( // ищем персонажа в переменной positionedCharacters с позицией, соответствующей индексу ячейки.
+			(positionedCharacter) => positionedCharacter.position === index
+		)?.character;
+		if (character) {
+			this.gamePlay.showCellTooltip(character.toString(), index); // если персонаж найден, его имя отображается в виде подсказки над ячейкой.
+		}
+		if (this.gamePlay.currentCharacter) { // проверяем наличие текущего активного персонажа 
+			if (character) { // если персонаж существует, то устанавливаем соответствующий курсор в зависимости от принадлежности персонажа к команде пользователя и его возможных действий.
+				if (this.userTeam?.has(character)) {
+					this.gamePlay.setCursor(cursors.pointer);
+				} else if (attackRadius( // Изменение цвета ячейки, если персонаж атакует или может переместиться в нее
+					this.gamePlay.currentCharacter.position,
+					this.gamePlay.currentCharacter.character.attackRange,
+					this.gamePlay.boardSize
+				).includes(index)) {
+					this.gamePlay.setCursor(cursors.crosshair);
+					this.gamePlay.selectCell(index, 'red');
+				} else {
+					this.gamePlay.setCursor(cursors.notallowed);
+				}
+			} else if (movementRadius( // проверяем доступность перемещения персонажа в ячейку и ее подсветка зеленым цветом, если она входит в радиус перемещения.
+				this.gamePlay.currentCharacter.position,
+				this.gamePlay.currentCharacter.character.movementRange,
+				this.gamePlay.boardSize
+			).includes(index)) {
+				this.gamePlay.setCursor(cursors.pointer);
+				this.gamePlay.selectCell(index, 'green');
+			} else {
+				this.gamePlay.setCursor(cursors.notallowed);  // Установка курсора "недоступно", если ячейка не доступна для перемещения персонажа
+			}
+		}
+	}
 
-      if (indexInArr !== -1) {
-        const item = this.gameState.arrTeam()[indexInArr];
-        const message = `🎖${item.character.level}⚔${item.character.attack}🛡${item.character.defence}❤${item.character.health}`;
-        this.gamePlay.showCellTooltip(message, index);
-      }
+  // Когда игрок уводит курсор мыши из ячейки, функция onCellLeave вызывается для скрытия подсказки, которая могла появиться при наведении на эту ячейку. 
+  // Также функция отменяет выделение ячейки, если индекс ячейки не соответствует позиции текущего активного персонажа.
+	onCellLeave(index: number) {
+		this.gamePlay.hideCellTooltip(index);
+		if (index !== this.gamePlay?.currentCharacter?.position) {
+			this.gamePlay.deselectCell(index);
+		}
+	}
 
-      if (indexInUserArr !== -1) {
-        this.gamePlay.setCursor(cursors.pointer);
-      }
+	attackEnemy() {
 
-      if (this.gameState.currentIndex !== null) { // показать место, которое персонаж может атаковать
-        if (this.gameState.currentRange().has(index) && indexInArr === -1) {
-          this.gamePlay.selectCell(index, 'green');
-        }
+    // получаем массивы союзников и врагов из объекта, к которому принадлежит данная функция
+		const allies = this.allies();
+		const enemies = this.enemies();
+		const attackAlly = allies?.reduce((array, ally: PositionedCharacter) => { // перебираем массив союзников и фильтрации массива врагов, чтобы найти врагов, которые могут атаковать союзника. 
+      // Если такие враги найдены, то создается массив attackAlly, содержащий пары союзник-враги, которые могут атаковать этого союзника
+			const enemiesAttackers = enemies?.filter((enemy) => {
+				const attackPositionsEnemy = attackRadius(
+					enemy.position,
+					enemy.character.attackRange,
+					this.gamePlay.boardSize
+				);
+				return attackPositionsEnemy.includes(ally.position);
+			});
+			if (enemiesAttackers?.length) { // проверяем, есть ли союзники, которые могут быть атакованы
+				const item: EnemiesVSAlly = [ally, enemiesAttackers];
+				array.push(item);
+			}
+			return array;
+		}, <EnemiesVSAlly[]>[]);
+		if (attackAlly?.length) { // Если такие союзники найдены, то выбирается случайный союзник и случайный враг из атакующих его врагов
+			const randomAttackAlly = randomElementFromArray(attackAlly);
+			const [attackedAlly, attackerEnemies] = randomAttackAlly;
+			const attackerEnemy = randomElementFromArray(attackerEnemies);
+			const damage = dealDamage( // вызывая функцию dealDamage, ведется расчета урона, который нанесет враг союзнику, и уменьшается здоровье союзника на этот урон. 
+				attackerEnemy.character,
+				attackedAlly.character
+			);
 
-        // показать место, куда персонаж может двигаться
-        if (this.gameState.currentRangeMove().has(index) && this.gameState.arrPositions().indexOf(index) === -1) {
-          this.gamePlay.setCursor(cursors.pointer);
-        }
-      }
+      // После этого отображается анимация урона на игровом поле, и если здоровье союзника становится меньше или равно 0, вызывается функция deathCharacter() для обработки смерти союзника.
+			attackedAlly.character.health -= damage;
+			this.gamePlay.showDamage(attackedAlly.position, `${damage}`).then(() => {
+				this.deathCharacter(attackedAlly.character);
+				this.gamePlay.redrawPositions(this.positionedCharacters);
+				if (!this.allies()?.length) {
+					this.gamePlay.clearEvents();
+				}
+			});
 
-      // добавить красный кружок и перекрестие курсора на врага, если он находится в текущем диапазоне пользовательского персонажа, или добавить перекрестие запрещено
-      // если он не в текущем диапазоне.
-      if (this.gameState.currentIndex !== null && !this.gameState.currentRange().has(index) && indexInCompArr !== -1) {
-        this.gamePlay.setCursor(cursors.notallowed);
-      } else if (this.gameState.currentIndex !== null && indexInCompArr !== -1) {
-        this.gamePlay.selectCell(index, 'red');
-        this.gamePlay.setCursor(cursors.crosshair);
-      }
-    }
-  }
+      // Если не было найдено союзников, которые могут быть атакованы, то происходит перемещение случайного врага по игровому полю. 
+      // Для этого выбираются возможные позиции для перемещения врага с помощью функции movementRadius(), затем из этих позиций удаляются занятые другими персонажами, 
+      // и случайно выбирается новая позиция для врага
+		} else if (enemies) {
+			const randomEnemy = randomElementFromArray(enemies);
+			const possiblePositions = movementRadius(
+				randomEnemy.position,
+				randomEnemy.character.movementRange,
+				this.gamePlay.boardSize
+			);
+			const positionsCharacters = this.positionedCharacters.map((character) => character.position);
+			// eslint-disable-next-line max-len
+			const positions = possiblePositions.filter((position) => !positionsCharacters.includes(position));
+			randomEnemy.position = randomElementFromArray(positions);
+		}
+	}
 
-  onCellLeave(index) {
-    // TODO: react to mouse leave
+	deathCharacter(character: Character) { // данная функция вызывается в случае, если здоровье союзника становится меньше или равно 0, что означает его смерть. 
+    // В этом случае функция производит фильтрацию массива positionedCharacters, удаляя из него позицию умершего союзника. Таким образом, убирается умерший персонаж из игрового поля, 
+    // чтобы он больше не участвовал в боевых действиях
+		if (character.health <= 0) {
+			// eslint-disable-next-line max-len
+			this.positionedCharacters = this.positionedCharacters.filter((positionedCharacter) => positionedCharacter.character !== character);
+		}
+	}
 
-    if (!this.gameState.block) {
-      const indexInArr = this.gameState.arrPositions().indexOf(index);
-      const indexInCompArr = this.gameState.arrCompPosition().indexOf(index);
-      const indexInUserArr = this.gameState.arrUserPosition().indexOf(index);
+  // Функции allies() и enemies() возвращают массивы союзников и врагов соответственно, находящихся в игровом поле. Для этого они используем метод filter(), 
+  // который проходит по массиву positionedCharacters и возвращает только те элементы, для которых условие внутри стрелочной функции возвращает true. В случае allies(), 
+  // условие проверяет, содержит ли userTeam персонажа из positionedCharacters, а в случае enemies() - не содержит ли.
 
-      if ((this.gameState.currentRange().has(index) && indexInArr === -1)
-        || (this.gameState.currentRange().has(index) && indexInCompArr !== -1)) {
-        this.gamePlay.setCursor(cursors.auto);
-        this.gamePlay.deselectCell(index);
-      }
+Таким образом, функции allies() и enemies() позволяют получить список союзников и врагов из массива positionedCharacters, основываясь на принадлежности персонажей к командам.
+	allies() {
+		return this.positionedCharacters.filter((value) => this.userTeam?.has(value.character));
+	}
 
-      if ((this.gameState.currentRangeMove() !== null && this.gameState.currentRangeMove().has(index)
-        && indexInArr === -1) || indexInUserArr !== -1) {
-        this.gamePlay.setCursor(cursors.auto);
-      }
-
-      if (this.gameState.currentIndex !== null) {
-        this.gamePlay.setCursor(cursors.auto);
-      }
-    }
-  }
-
-  levelUp() {
-    for (const item of this.UserTeam.team) {
-      const current = item.character;
-      current.level += 1;
-      current.attack = this.upAttackDefence(current.attack, current.health);
-      current.defence = this.upAttackDefence(current.defence, current.health);
-      current.health = (current.health + 80) < 100 ? current.health + 80 : 100;
-    }
-  }
-
-  upAttackDefence(attackBefore, life) {
-    return Math.floor(Math.max(attackBefore, attackBefore * (1.6 - life / 100)));
-  }
+	enemies() {
+		return this.positionedCharacters.filter((value) => !this.userTeam?.has(value.character));
+	}
 }
