@@ -1,25 +1,27 @@
 import { calcHealthLevel, calcTileType } from './utils';
+import PositionedCharacter from './PositionedCharacter';
 
 export default class GamePlay {
-  constructor() {
-    this.boardSize = 8;
-    this.container = null;
-    this.boardEl = null;
-    this.cells = [];
-    this.cellClickListeners = [];
-    this.cellEnterListeners = [];
-    this.cellLeaveListeners = [];
-    this.newGameListeners = [];
-    this.saveGameListeners = [];
-    this.loadGameListeners = [];
-  }
+	[key: string]: any;
 
-  bindToDOM(container) {
-    if (!(container instanceof HTMLElement)) {
-      throw new Error('container is not HTMLElement');
-    }
-    this.container = container;
-  }
+	public readonly boardSize: number = 8;
+	private readonly container: Element;
+	private boardEl?: HTMLElement;
+	private readonly cells: HTMLElement[] = [];
+	private cellClickListeners: any[] = [];
+	private cellEnterListeners: any[] = [];
+	private cellLeaveListeners: any[] = [];
+	private newGameListeners: any[] = [];
+	private saveGameListeners: any[] = [];
+	private loadGameListeners: any[] = [];
+	private newGameEl: any;
+	private saveGameEl: any;
+	private loadGameEl: any;
+	public currentCharacter?: PositionedCharacter;
+
+	constructor(container: HTMLElement) {
+		this.container = container;
+	}
 
   /**
    * Draws boardEl with specific theme
@@ -240,4 +242,20 @@ export default class GamePlay {
     }
     points[0].textContent = `Points: ${amount}`;
   }
+
+  setCursor(cursor: string) { // установим курсор для игрового поля. Если элемент игрового поля (this.boardEl) существует, то функция устанавливает стиль курсора для этого элемента 
+    // равным значению параметра cursor.
+		if (this.boardEl) {
+			this.boardEl.style.cursor = cursor;
+		}
+	}
+
+	clearEvents() { // очищаем все обработчики событий, привязанные к ячейкам игрового поля. Для этого пройдем по массиву ячеек (this.cells) и для каждой ячейки создадим ее клон (clone) 
+    // с помощью метода cloneNode(true), затем заменим оригинальную ячейку ее клоном с помощью метода replaceWith(). Таким образом, все обработчики событий, привязанные к ячейкам, 
+    // будут удалены, и ячейки будут очищены от любых связанных с ними событий.
+		this.cells.forEach((cellEl: HTMLElement) => {
+			const clone = cellEl.cloneNode(true);
+			cellEl.replaceWith(clone);
+		});
+	}
 }

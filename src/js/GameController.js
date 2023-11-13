@@ -277,7 +277,8 @@ export default class GameController {
   // который проходит по массиву positionedCharacters и возвращает только те элементы, для которых условие внутри стрелочной функции возвращает true. В случае allies(), 
   // условие проверяет, содержит ли userTeam персонажа из positionedCharacters, а в случае enemies() - не содержит ли.
 
-Таким образом, функции allies() и enemies() позволяют получить список союзников и врагов из массива positionedCharacters, основываясь на принадлежности персонажей к командам.
+// Таким образом, функции allies() и enemies() позволяют получить список союзников и врагов из массива positionedCharacters, основываясь на принадлежности персонажей к командам.
+
 	allies() {
 		return this.positionedCharacters.filter((value) => this.userTeam?.has(value.character));
 	}
