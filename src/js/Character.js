@@ -12,82 +12,51 @@
  * undead
  * vampire
  */
-export default class Character {
-  constructor(level, type = 'generic') {
-    this.level = level;
-    this.attack = 0;
-    this.defence = 0;
-    this.health = 50;
-    this.type = type;
-    // TODO: выбросите исключение, если кто-то использует "new Character()"
-    if (new.target.name === 'Character') {
-      throw new Error('Impossible create instance');
-    }
-  }
-}
 
-export class Bowman extends Character {
-  constructor(level, type = 'bowman') {
-    super(level, type = 'bowman');
-    this.attack = 25;
-    this.defence = 25;
-    this.rangeAttack = 5;
-    this.rangeMove = 5;
-    this.name = 'Bowman';
-  }
-}
+export default abstract class Character {
+	attackRange: number;
 
-export class Swordsman extends Character {
-  constructor(level, type = 'swordsman') {
-    super(level, type = 'swordsman');
-    this.attack = 40;
-    this.defence = 10;
-    this.rangeAttack = 3;
-    this.rangeMove = 9;
-    this.name = 'Swordsman';
-  }
-}
+	movementRange: number;
 
-export class Magician extends Character {
-  constructor(level, type = 'magician') {
-    super(level, type = 'magician');
-    this.attack = 10;
-    this.defence = 40;
-    this.rangeAttack = 9;
-    this.rangeMove = 3;
-    this.name = 'Magician';
-  }
-}
+	level: number = 0;
 
-export class Vampire extends Character {
-  constructor(level, type = 'vampire') {
-    super(level, type = 'vampire');
-    this.attack = Math.ceil(25 * Math.max(1, 0.7 + (level + 2) / 10));
-    this.defence = Math.ceil(25 * Math.max(1, 0.7 + (level + 2) / 10));
-    this.rangeAttack = 5;
-    this.rangeMove = 5;
-    this.name = 'Vampire';
-  }
-}
+	attack: number = 0;
 
-export class Undead extends Character {
-  constructor(level, type = 'undead') {
-    super(level, type = 'undead');
-    this.attack = Math.ceil(40 * Math.max(1, 0.7 + (level + 2) / 10));
-    this.defence = Math.ceil(10 * Math.max(1, 0.7 + (level + 2) / 10));
-    this.rangeAttack = 3;
-    this.rangeMove = 9;
-    this.name = 'Undead';
-  }
-}
+	defence: number = 0;
 
-export class Daemon extends Character {
-  constructor(level, type = 'daemon') {
-    super(level, type = 'daemon');
-    this.attack = Math.ceil(10 * Math.max(1, 0.7 + (level + 2) / 10));
-    this.defence = Math.ceil(40 * Math.max(1, 0.7 + (level + 2) / 10));
-    this.rangeAttack = 9;
-    this.rangeMove = 3;
-    this.name = 'Daemon';
-  }
+	health: number = 50;
+
+	type: string;
+
+	protected constructor(level: number, type: string) {
+		this.type = type;
+		this.attackRange = 0;
+		this.movementRange = 0;
+		for (let i = 0; i < level; i++) {
+			this.levelUP();
+		}
+	}
+
+	toString() {
+		return `\u{1F396} ${this.level} \u{2694} ${this.attack} \u{1F6E1} ${this.defence} \u{2764} ${this.health}`;
+	}
+
+	levelUP() {
+		if (this.level) {
+			if (this.health > 20) {
+				this.health = 100;
+			} else {
+				this.health += 80;
+			}
+			this.level += 1;
+			this.attack = this.improvingPerformance(this.attack);
+			this.defence = this.improvingPerformance(this.defence);
+		} else {
+			this.level += 1;
+		}
+	}
+
+	improvingPerformance(attribute: number) {
+		return Math.max(attribute, (attribute * (80 + this.health)) / 100);
+	}
 }
