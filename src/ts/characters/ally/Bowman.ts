@@ -1,4 +1,4 @@
-import Character from '../../type/Character';
+import Character from '../../Character';
 
 export default class Bowman extends Character {
 	attack = 25;
