@@ -1,3 +1,13 @@
+import { range } from './generators';
+import Character from './Character';
+import PositionedCharacter from './PositionedCharacter';
+import Bowman from '../characters/ally/Bowman';
+import Magician from '../characters/ally/Magician';
+import Swordsman from '../characters/ally/Swordsman';
+import Daemon from '../characters/enemy/Daemon';
+import Undead from '../characters/enemy/Undead';
+import Vampire from '../characters/enemy/Vampire';
+
 /**
  * @todo
  * @param index - индекс поля
