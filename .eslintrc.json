@@ -43,7 +43,9 @@
 					"exports": "never",
 					"functions": "never"
 				}],
-				"no-alert": "off"
+				"no-alert": "off",
+                "eslint linebreak-style": ["error", "windows"],
+                "eslint max-len": ["error", { "comments": 200 }]
 			}
         }
     ]

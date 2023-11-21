@@ -150,7 +150,7 @@ export function movementRadius(position: number, radius: number, size: number) {
 		}
 	}
 	return arr.flat(); // возвращает массив arr, который содержит все позиции в радиусе движения от заданной позиции. Для того чтобы получить одномерный массив, 
-	//используется метод flat(), который "разворачивает" вложенные массивы.
+	// используется метод flat(), который "разворачивает" вложенные массивы.
 }
 
 export function generatePositionedEnemies(boardSize: number) {
